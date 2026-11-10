@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ptop</title>
+<style>
+:root {
+  color-scheme: dark;
+  --page: #0f1011; --surface: #161719; --raise: #1e1f22;
+  --line: rgba(255,255,255,0.08); --line-2: rgba(255,255,255,0.16);
+  --ink: #ececea; --ink-2: #b4b3ad; --muted: #85847e;
+  --free: #199e70; --used: #4b4d54; --held: #c98500; --off: #5a5a56;
+  --crit: #e66767; --good: #0ca30c; --accent: #3987e5;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --page: #f6f6f3; --surface: #ffffff; --raise: #f1f0ec;
+    --line: rgba(0,0,0,0.09); --line-2: rgba(0,0,0,0.18);
+    --ink: #111111; --ink-2: #55544f; --muted: #7a7872;
+    --free: #1baf7a; --used: #c9c8c1; --held: #eda100; --off: #b5b4ac;
+    --crit: #d03b3b; --good: #0ca30c; --accent: #2a78d6;
+  }
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --page: #f6f6f3; --surface: #ffffff; --raise: #f1f0ec;
+  --line: rgba(0,0,0,0.09); --line-2: rgba(0,0,0,0.18);
+  --ink: #111111; --ink-2: #55544f; --muted: #7a7872;
+  --free: #1baf7a; --used: #c9c8c1; --held: #eda100; --off: #b5b4ac;
+  --crit: #d03b3b; --good: #0ca30c; --accent: #2a78d6;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--page); color: var(--ink);
+  font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.mono, .num { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+.wrap { max-width: 1840px; margin: 0 auto; padding: 0 24px 64px; }
+@media (max-width: 640px) { .wrap { padding: 0 16px 40px; } }
+
+header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 0; border-bottom: 1px solid var(--line); }
+header h1 { font-size: 15px; font-weight: 650; margin: 0 auto 0 0; }
+.status { display: flex; gap: 14px; color: var(--ink-2); }
+.status span { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.dot.ok { background: var(--good); } .dot.err { background: var(--crit); }
+.meta { color: var(--muted); }
+button, select, input { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line-2); border-radius: 6px; padding: 4px 10px; height: 28px; }
+button { cursor: pointer; }
+button:hover:not(:disabled) { background: var(--raise); }
+button:disabled { color: var(--muted); cursor: default; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.filters { display: flex; align-items: center; gap: 10px 18px; flex-wrap: wrap; padding: 14px 0; }
+.filters label { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-2); }
+.filters input[type=number] { width: 60px; }
+.seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 6px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; background: transparent; color: var(--ink-2); height: 26px; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed=true] { background: var(--raise); color: var(--ink); font-weight: 600; }
+
+.box { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 18px; min-width: 0; }
+.cluster { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 4px 32px; margin-bottom: 12px; }
+@media (max-width: 900px) { .cluster { grid-template-columns: minmax(0, 1fr); } }
+.cluster h2 { grid-column: 1 / -1; margin: 0 0 6px; font-size: 14px; font-weight: 650; display: flex; align-items: baseline; gap: 10px; }
+.cluster h2 span { color: var(--muted); font-weight: 400; font-size: 13px; }
+.err { grid-column: 1 / -1; color: var(--crit); font-size: 12px; margin-bottom: 6px; word-break: break-word; }
+.trow { display: grid; grid-template-columns: 120px minmax(0, 1fr) 60px; align-items: center; gap: 10px; padding: 4px 0; cursor: pointer; }
+.trow:hover .name { color: var(--ink); }
+.trow .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+.trow.sel .name { color: var(--ink); font-weight: 650; }
+.trow .cnt { text-align: right; color: var(--muted); }
+.trow .cnt b { color: var(--ink); font-weight: 600; }
+.bar { display: flex; height: 8px; gap: 2px; }
+.bar span { height: 100%; min-width: 2px; border-radius: 2px; }
+.used { background: var(--used); } .free { background: var(--free); } .held { background: var(--held); }
+.off { background: repeating-linear-gradient(45deg, var(--off) 0 2px, transparent 2px 4px); outline: 1px solid var(--off); outline-offset: -1px; }
+
+.map { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: flex-start; }
+.group { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; white-space: nowrap; }
+.group span:last-child { color: var(--muted); font-size: 12px; }
+.nodegrid { display: flex; flex-wrap: wrap; gap: 6px; }
+.node { width: 122px; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; cursor: default; }
+.node:hover { border-color: var(--line-2); background: var(--raise); }
+.node.fit { border-color: var(--free); }
+.node.offl { opacity: 0.5; }
+.node .nn { font-size: 11px; display: flex; justify-content: space-between; gap: 4px; color: var(--muted); }
+.node .nn b { color: var(--ink); font-weight: 500; }
+.gpus { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; margin: 6px 0 5px; }
+.gpus i { aspect-ratio: 1; border-radius: 2px; display: block; }
+.node .when { font-size: 11px; color: var(--muted); }
+.node .when.now { color: var(--ink); font-weight: 600; }
+.empty { color: var(--muted); padding: 20px 0; text-align: center; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin: 10px 2px 0; }
+.legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
+#tip { position: fixed; z-index: 10; pointer-events: none; background: var(--raise); border: 1px solid var(--line-2); border-radius: 6px; padding: 8px 10px; font-size: 12px; max-width: 320px; display: none; }
+#tip .t { font-weight: 600; margin-bottom: 4px; }
+#tip .r { display: flex; justify-content: space-between; gap: 16px; color: var(--ink-2); }
+#tip .r b { color: var(--ink); font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>ptop</h1>
+    <div class="status" id="status"></div>
+    <span class="meta num" id="ago"></span>
+    <button id="refreshBtn" title="Poll now (at most once every 20 seconds)">Refresh</button>
+  </header>
+
+  <div class="filters">
+    <label>GPUs needed on one node <input type="number" id="need" min="1" max="16" value="1"></label>
+    <label>Type <select id="typeSel"><option value="">any</option></select></label>
+    <label>Cluster <span class="seg" id="clSeg"></span></label>
+  </div>
+
+  <div id="clusters"></div>
+  <div class="legend"><span><i class="free"></i>free</span><span><i class="used"></i>in use</span><span><i class="held"></i>held: idle but reserved, or node out of CPU / memory</span><span><i class="off"></i>offline</span></div>
+</div>
+<div id="tip" role="tooltip"></div>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const HELD = { reserved: 'reserved', cpu_full: 'CPU full', mem_full: 'memory full' };
+let S = null, clusterFilter = '', pendingType = '';
+
+try {
+  const p = JSON.parse(localStorage.getItem('ptop-plan') || '{}');
+  if (p.need) $('#need').value = p.need;
+  if (p.cl) clusterFilter = p.cl;
+  pendingType = p.type || '';
+} catch (e) {}
+function savePlan() {
+  try { localStorage.setItem('ptop-plan', JSON.stringify({ need: +$('#need').value, type: $('#typeSel').value, cl: clusterFilter })); } catch (e) {}
+}
+
+$('#refreshBtn').onclick = async () => {
+  const b = $('#refreshBtn');
+  b.disabled = true; b.textContent = 'Polling';
+  try { await fetch('api/refresh', { method: 'POST' }); } catch (e) {}
+  setTimeout(load, 6000); setTimeout(load, 15000);
+  setTimeout(() => { b.disabled = false; b.textContent = 'Refresh'; }, 15000);
+};
+$('#need').oninput = () => { savePlan(); render(); };
+$('#typeSel').onchange = () => { savePlan(); render(); };
+
+function fmtAgo(t) {
+  if (!t) return 'never';
+  const s = Math.max(0, (Date.now() - new Date(t)) / 1000);
+  if (s < 60) return `${Math.round(s)}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  return `${(s / 3600).toFixed(1)}h ago`;
+}
+function fmtIn(d) {
+  const m = Math.max(1, Math.round((d - Date.now()) / 60000));
+  return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
+}
+const hhmm = d => new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+
+/** Earliest Date a node can host `need` GPUs, "now", or null. */
+function eta(n, need) {
+  if (n.status === 'offline' || n.total < need) return null;
+  if (n.usable >= need) return 'now';
+  let have = n.usable;
+  for (const r of n.releases) { have += r.gpus; if (have >= need) return new Date(r.at); }
+  return null;
+}
+const shortName = s => s.replace(/^atl\d-\d-/, '').replace(/-0$/, '');
+const needVal = () => Math.max(1, +$('#need').value || 1);
+
+async function load() {
+  try {
+    S = await fetch('api/state').then(r => r.json());
+    render();
+  } catch (e) {
+    $('#ago').textContent = 'cannot reach the ptop server';
+  }
+}
+function tickAgo() {
+  if (!S) return;
+  const newest = S.clusters.map(c => c.last_success).filter(Boolean).sort().pop();
+  $('#ago').textContent = `updated ${fmtAgo(newest)}`;
+}
+
+function render() {
+  if (!S) return;
+  $('#status').innerHTML = S.clusters.map(c =>
+    `<span title="${esc(c.error || c.name)}"><i class="dot ${c.ok ? 'ok' : (c.last_attempt ? 'err' : '')}"></i>${esc(c.name)}</span>`).join('');
+  tickAgo();
+
+  const types = [...new Set(S.clusters.flatMap(c => c.summary.map(t => t.gpu_type)))].sort();
+  const sel = $('#typeSel'), want = sel.value || pendingType;
+  sel.innerHTML = '<option value="">any</option>' + types.map(t => `<option ${t === want ? 'selected' : ''}>${esc(t)}</option>`).join('');
+  if (types.length) pendingType = '';
+  $('#clSeg').innerHTML = [['', 'All'], ...S.clusters.map(c => [c.name, c.name])].map(([v, l]) =>
+    `<button data-cl="${esc(v)}" aria-pressed="${clusterFilter === v}">${esc(l)}</button>`).join('');
+  $('#clSeg').querySelectorAll('button').forEach(b => b.onclick = () => { clusterFilter = b.dataset.cl; savePlan(); render(); });
+
+  const cls = S.clusters.filter(c => !clusterFilter || c.name === clusterFilter);
+  $('#clusters').innerHTML = cls.map(renderCluster).join('');
+  document.querySelectorAll('.trow').forEach(el => el.onclick = () => {
+    sel.value = sel.value === el.dataset.type ? '' : el.dataset.type;
+    savePlan(); render();
+  });
+  bindTips();
+}
+
+function renderCluster(c) {
+  const type = $('#typeSel').value, need = needVal();
+  const free = c.summary.reduce((a, t) => a + t.usable, 0), total = c.summary.reduce((a, t) => a + t.total, 0);
+  const maxT = Math.max(1, ...c.summary.map(t => t.total));
+  const bars = c.summary.map(t => {
+    const segs = [['used', t.used], ['held', t.blocked], ['off', t.offline], ['free', t.usable]].filter(s => s[1] > 0)
+      .map(([k, v]) => `<span class="${k}" style="flex:${v} 0 0"></span>`).join('');
+    const tip = { t: t.gpu_type, r: [['Free', t.usable], ['In use', t.used], ['Held', t.blocked], ['Offline', t.offline], ['Most free on one node', t.max_node_free]] };
+    return `<div class="trow ${t.gpu_type === type ? 'sel' : ''}" data-type="${esc(t.gpu_type)}" data-tip="${esc(JSON.stringify(tip))}">
+      <span class="name mono">${esc(t.gpu_type)}</span>
+      <div class="bar" style="width:${(t.total / maxT * 100).toFixed(2)}%">${segs}</div>
+      <span class="cnt num"><b>${t.usable}</b> / ${t.total}</span></div>`;
+  }).join('');
+
+  // nodes grouped by GPU type; inside a group, soonest available first
+  const groups = {};
+  for (const n of c.nodes) {
+    if ((type && n.gpu_type !== type) || n.total < need) continue;
+    const e = eta(n, need);
+    const rank = e === 'now' ? 0 : e && c.jobs_visible ? 1 : n.status === 'offline' ? 3 : 2;
+    (groups[n.gpu_type] ||= []).push({ n, e, rank });
+  }
+  const freeOf = g => g.reduce((a, x) => a + x.n.usable, 0);
+  const best = g => Math.min(...g.map(x => x.rank === 0 ? 0 : x.rank === 1 ? +x.e : Infinity));
+  const map = Object.entries(groups).sort((a, b) => best(a[1]) - best(b[1]) || freeOf(b[1]) - freeOf(a[1])).map(([t, g]) => {
+    g.sort((a, b) => a.rank - b.rank || (a.rank === 1 ? a.e - b.e : b.n.usable - a.n.usable) || a.n.name.localeCompare(b.n.name));
+    return `<div><div class="group"><span class="mono">${esc(t)}</span><span>${g.length} ${g.length === 1 ? 'node' : 'nodes'}, ${freeOf(g)} free</span></div>
+      <div class="nodegrid">${g.map(x => nodeTile(c, x, need)).join('')}</div></div>`;
+  }).join('');
+
+  const state = !c.last_attempt ? 'connecting' : c.last_success ? `${free} free of ${total}` : 'unreachable';
+  return `<section class="box cluster"><h2>${esc(c.name)}<span class="num">${state}</span></h2>
+    ${c.error ? `<div class="err">${c.last_success ? `Stale, last update ${fmtAgo(c.last_success)}. ` : ''}${esc(c.error)}</div>` : ''}
+    ${c.last_success ? `<div>${bars}</div><div class="map">${map || '<div class="empty">No node matches these filters.</div>'}</div>` : ''}
+  </section>`;
+}
+
+function nodeTile(c, { n, e, rank }, need) {
+  const freeCls = n.status === 'ok' ? 'free' : n.status === 'offline' ? 'off' : 'held';
+  const cells = n.gpus && n.gpus.length
+    ? n.gpus.map(g => `<i class="${g.busy ? 'used' : 'free'}"></i>`).join('')
+    : Array.from({ length: n.total }, (_, i) => `<i class="${i < n.used ? 'used' : freeCls}"></i>`).join('');
+  const when = rank === 0 ? 'now' : rank === 1 ? `in ${fmtIn(e)}` : n.status === 'offline' ? 'offline' : HELD[n.status] || (c.jobs_visible ? 'beyond job limits' : '');
+  const extra = n.gpus && n.gpus.length
+    ? n.gpus.filter(g => g.busy).map(g => [`GPU ${g.index}`, `${g.util}%, ${Math.round(g.mem_used_mb / 1024)} GB${g.users.length ? ', ' + g.users.join(' ') : ''}`])
+    : n.releases.slice(0, 5).map(r => [`+${r.gpus} at ${hhmm(r.at)}`, `in ${fmtIn(new Date(r.at))}`]);
+  const tip = { t: n.name, r: [['Type', n.gpu_type], ['State', n.state], ['CPU cores idle', `${n.cpu_idle} / ${n.cpu_total}`], ['Memory free', `${n.mem_free_gb} / ${n.mem_total_gb} GB`], ['Partitions', n.partitions.join(', ')], ...extra] };
+  return `<div class="node ${rank === 0 ? 'fit' : ''} ${n.status === 'offline' ? 'offl' : ''}" data-tip="${esc(JSON.stringify(tip))}">
+    <div class="nn mono"><b>${esc(shortName(n.name))}</b><span>${n.usable}/${n.total}</span></div>
+    <div class="gpus">${cells}</div>
+    <div class="when num ${rank === 0 ? 'now' : ''}">${when || '&nbsp;'}</div></div>`;
+}
+
+const tip = $('#tip');
+function bindTips() {
+  document.querySelectorAll('[data-tip]').forEach(el => {
+    el.onmousemove = e => {
+      const data = JSON.parse(el.dataset.tip);
+      tip.innerHTML = `<div class="t mono">${esc(data.t)}</div>` + data.r.map(([k, v]) => `<div class="r"><span>${esc(k)}</span><b class="num">${esc(v)}</b></div>`).join('');
+      tip.style.display = 'block';
+      const r = tip.getBoundingClientRect();
+      let X = e.clientX + 14, Y = e.clientY + 14;
+      if (X + r.width > innerWidth - 8) X = e.clientX - r.width - 14;
+      if (Y + r.height > innerHeight - 8) Y = e.clientY - r.height - 14;
+      tip.style.left = Math.max(8, X) + 'px'; tip.style.top = Math.max(8, Y) + 'px';
+    };
+    el.onmouseleave = () => tip.style.display = 'none';
+  });
+}
+
+load();
+setInterval(load, 20000);
+setInterval(tickAgo, 1000);
+</script>
+</body>
+</html>

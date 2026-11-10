@@ -1,0 +1,24 @@
+[package]
+name = "ptop"
+version = "0.1.0"
+edition = "2021"
+description = "htop-style terminal monitor for free GPUs on Slurm clusters and nvidia-smi hosts"
+repository = "https://github.com/zilongpa/ptop"
+
+[dependencies]
+anyhow = "1"
+axum = "0.7"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
+clap = { version = "4", features = ["derive", "env"] }
+crossterm = "0.28"
+ratatui = "0.29"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time", "sync", "io-util", "net"] }
+unicode-width = "0.2"
+etcetera = "0.11.0"
+
+[profile.release]
+lto = "thin"
+strip = true
